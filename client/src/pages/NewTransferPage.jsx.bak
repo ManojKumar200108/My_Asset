@@ -1,0 +1,45 @@
+import React from 'react';
+import { useAppData } from '../hooks/useAppData';
+
+export default function NewTransferPage() {
+  const { data, loading, error } = useAppData();
+  const assets = data?.assets || [];
+  const settings = data?.settings || {};
+
+  if (loading) return <div className="card"><div className="card-body">Loading transfer form data...</div></div>;
+  if (error) return <div className="card"><div className="card-body">{error}</div></div>;
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="page-title">Initiate Transfer</div>
+          <div className="page-subtitle">Assets and destination masters are loaded from DB</div>
+        </div>
+      </div>
+
+      <div className="card mb-4">
+        <div className="card-header"><span className="card-title">Transferable Assets</span></div>
+        <div className="table-wrap" style={{ border: 'none' }}>
+          <table className="data-table">
+            <thead><tr><th>Asset ID</th><th>Name</th><th>Plant</th><th>Location</th><th>Status</th></tr></thead>
+            <tbody>
+              {assets.map((a) => (
+                <tr key={a.id}><td>{a.assetId}</td><td>{a.assetName}</td><td>{a.plant}</td><td>{a.location}</td><td>{a.status}</td></tr>
+              ))}
+              {assets.length === 0 && <tr><td colSpan={5}>No assets available.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-body">
+          <div>Plants: {(settings.plants || []).map((p) => p.name).join(', ') || '-'}</div>
+          <div>Locations: {(settings.locations || []).map((l) => l.name).join(', ') || '-'}</div>
+          <div>Departments: {(settings.departments || []).map((d) => d.name).join(', ') || '-'}</div>
+        </div>
+      </div>
+    </div>
+  );
+}

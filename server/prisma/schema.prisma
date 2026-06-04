@@ -1,0 +1,544 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum for user roles
+enum UserRole {
+  ADMIN
+  MANAGER
+  CUSTODIAN
+  AUDITOR
+  VIEWER
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  permissions Json?
+  isActive    Boolean  @default(true)
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([isActive])
+}
+
+enum TransferType {
+  RETURNABLE
+  NON_RETURNABLE
+}
+
+enum TransferStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  IN_TRANSIT
+  COMPLETED
+  RETURNED
+}
+
+enum DepreciationMethod {
+  SLM
+  WDV
+}
+
+enum AssetCondition {
+  GOOD
+  FAIR
+  POOR
+  SCRAP
+}
+
+enum MaintenanceType {
+  PREVENTIVE
+  CORRECTIVE
+  AMC
+}
+
+enum NotificationType {
+  TRANSFER_APPROVAL_REQUEST
+  TRANSFER_APPROVED
+  TRANSFER_REJECTED
+  MAINTENANCE_DUE
+  WARRANTY_EXPIRY
+  RETURN_OVERDUE
+}
+
+enum DisposalType {
+  SCRAP
+  WRITE_OFF
+  SOLD
+  DONATED
+}
+
+// ===== Users & Authentication =====
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          UserRole
+  plant         Plant?   @relation(fields: [plantId], references: [id])
+  plantId       String?
+  department    Department? @relation(fields: [departmentId], references: [id])
+  departmentId  String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  loginHistory  LoginHistory[]
+  assetsCreated Asset[] @relation("createdBy")
+  assetUpdates  Asset[] @relation("updatedBy")
+  assetHistory  AssetHistory[]
+  transfers     Transfer[] @relation("initiatedBy")
+  transferApprovals TransferApproval[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  maintenanceLogs MaintenanceLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model LoginHistory {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  ipAddress String
+  success   Boolean
+  timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([timestamp])
+}
+
+// ===== Master Data =====
+
+model Plant {
+  id        String   @id @default(cuid())
+  name      String
+  location  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  users                   User[]
+  departments             Department[]
+  locations               Location[]
+  assets                  Asset[]
+  custodians              Custodian[]
+  approvalChains          ApprovalChain[]
+  transfersFromPlant      Transfer[] @relation("fromPlant")
+  transfersToPlant        Transfer[] @relation("toPlant")
+
+  @@unique([name])
+  @@index([isActive])
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String
+  plant     Plant    @relation(fields: [plantId], references: [id])
+  plantId   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  users                   User[]
+  assets                  Asset[]
+  custodians              Custodian[]
+  transfersFromDept       Transfer[] @relation("fromDept")
+  transfersToDept         Transfer[] @relation("toDept")
+
+  @@unique([plantId, name])
+  @@index([plantId])
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  plant     Plant    @relation(fields: [plantId], references: [id])
+  plantId   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  assets              Asset[]
+  transfersFrom       Transfer[] @relation("fromLocation")
+  transfersTo         Transfer[] @relation("toLocation")
+
+  @@unique([plantId, name])
+  @@index([plantId])
+}
+
+model AssetCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  assets         Asset[]
+  approvalChains ApprovalChain[]
+
+  @@index([isActive])
+}
+
+model AssetStatus {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  assets Asset[]
+
+  @@index([isActive])
+}
+
+model Vendor {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  email     String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  assets                  Asset[]
+  maintenanceSchedules    MaintenanceSchedule[]
+
+  @@index([isActive])
+}
+
+model Custodian {
+  id            String   @id @default(cuid())
+  name          String
+  email         String
+  phone         String?
+  department    Department @relation(fields: [departmentId], references: [id])
+  departmentId  String
+  plant         Plant @relation(fields: [plantId], references: [id])
+  plantId       String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  assets Asset[]
+
+  @@index([departmentId])
+  @@index([plantId])
+}
+
+model ApprovalChain {
+  id                String   @id @default(cuid())
+  category          AssetCategory @relation(fields: [categoryId], references: [id])
+  categoryId        String
+  plant             Plant @relation(fields: [plantId], references: [id])
+  plantId           String
+  level             Int              // 1 for L1, 2 for L2, etc.
+  roleRequired      UserRole         // Admin, Manager, etc.
+  amountThreshold   Float?           // If null, applies to all amounts; if set, applies when cost >= threshold
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+
+  @@unique([categoryId, plantId, level])
+  @@index([categoryId])
+  @@index([plantId])
+}
+
+// ===== Asset Registry =====
+
+model Asset {
+  id                      String   @id @default(cuid())
+  assetId                 String   @unique      // AST-2024-00001
+  assetName               String
+  assetCode               String?  @unique      // Custom code
+  serialNumber            String?
+  modelNumber             String?
+  brand                   String?
+
+  category                AssetCategory @relation(fields: [categoryId], references: [id])
+  categoryId              String
+  subCategory             String?
+  description             String?
+
+  plant                   Plant @relation(fields: [plantId], references: [id])
+  plantId                 String
+  location                Location @relation(fields: [locationId], references: [id])
+  locationId              String
+  department              Department @relation(fields: [departmentId], references: [id])
+  departmentId            String
+  custodian               Custodian @relation(fields: [custodianId], references: [id])
+  custodianId             String
+
+  purchaseDate            DateTime?
+  purchaseCost            Float?
+  vendor                  Vendor? @relation(fields: [vendorId], references: [id])
+  vendorId                String?
+  invoiceNumber           String?
+
+  warrantyExpiryDate      DateTime?
+  insurancePolicyNumber   String?
+  insuranceExpiry         DateTime?
+
+  usefulLifeYears         Int?
+  depreciationMethod      DepreciationMethod @default(SLM)
+  salvageValue            Float? @default(0)
+  currentBookValue        Float?
+
+  status                  AssetStatus @relation(fields: [statusId], references: [id])
+  statusId                String
+  condition               AssetCondition @default(GOOD)
+  isItAsset               Boolean @default(true)
+
+  remarks                 String?
+  createdBy               User @relation("createdBy", fields: [createdById], references: [id])
+  createdById             String
+  updatedBy               User? @relation("updatedBy", fields: [updatedById], references: [id])
+  updatedById             String?
+
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  deletedAt               DateTime?
+
+  history                 AssetHistory[]
+  transfers               Transfer[]
+  documents               AssetDocument[]
+  maintenanceSchedules    MaintenanceSchedule[]
+  maintenanceLogs         MaintenanceLog[]
+  notifications           Notification[] @relation("relatedAsset")
+
+  @@index([assetId])
+  @@index([plantId])
+  @@index([locationId])
+  @@index([departmentId])
+  @@index([statusId])
+  @@index([categoryId])
+}
+
+model AssetHistory {
+  id          String   @id @default(cuid())
+  asset       Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId     String
+  fieldName   String   // e.g., "location_id", "status_id"
+  oldValue    String?
+  newValue    String?
+  changedBy   User @relation(fields: [changedById], references: [id])
+  changedById String
+  changedAt   DateTime @default(now())
+
+  @@index([assetId])
+  @@index([changedById])
+}
+
+model AssetDocument {
+  id          String   @id @default(cuid())
+  asset       Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId     String
+  filename    String
+  originalName String
+  mimetype    String
+  uploadedAt  DateTime @default(now())
+
+  @@index([assetId])
+}
+
+// ===== Transfers & Approvals =====
+
+model Transfer {
+  id                      String   @id @default(cuid())
+  transferId              String   @unique      // TRF-2024-00001
+  asset                   Asset @relation(fields: [assetId], references: [id])
+  assetId                 String
+  transferType            TransferType
+
+  fromLocation            Location @relation("fromLocation", fields: [fromLocationId], references: [id])
+  fromLocationId          String
+  toLocation              Location @relation("toLocation", fields: [toLocationId], references: [id])
+  toLocationId            String
+
+  fromDepartment          Department? @relation("fromDept", fields: [fromDepartmentId], references: [id])
+  fromDepartmentId        String?
+  toDepartment            Department? @relation("toDept", fields: [toDepartmentId], references: [id])
+  toDepartmentId          String?
+
+  fromPlant               Plant? @relation("fromPlant", fields: [fromPlantId], references: [id])
+  fromPlantId             String?
+  toPlant                 Plant? @relation("toPlant", fields: [toPlantId], references: [id])
+  toPlantId               String?
+
+  initiatedBy             User @relation("initiatedBy", fields: [initiatedById], references: [id])
+  initiatedById           String
+  initiatedAt             DateTime @default(now())
+
+  expectedReturnDate      DateTime?   // For RETURNABLE transfers
+  actualReturnDate        DateTime?
+
+  purpose                 String?
+  remarks                 String?
+
+  status                  TransferStatus @default(DRAFT)
+  approvalLevelRequired   Int?
+  currentApprovalLevel    Int @default(0)
+
+  challanNumber           String?
+  challanGeneratedAt      DateTime?
+
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  approvals               TransferApproval[]
+  notifications           Notification[] @relation("relatedTransfer")
+
+  @@index([transferId])
+  @@index([assetId])
+  @@index([status])
+}
+
+model TransferApproval {
+  id                String   @id @default(cuid())
+  transfer          Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  transferId        String
+  level             Int
+  approver          User @relation(fields: [approverId], references: [id])
+  approverId        String
+  isApproved        Boolean?           // true = approved, false = rejected, null = pending
+  approvedAt        DateTime?
+  rejectedReason    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([transferId])
+  @@index([approverId])
+}
+
+// ===== Maintenance =====
+
+model MaintenanceSchedule {
+  id              String   @id @default(cuid())
+  asset           Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId         String
+  type            MaintenanceType
+  frequency       String           // "monthly", "quarterly", "annually", etc.
+  nextDueDate     DateTime
+  vendor          Vendor? @relation(fields: [vendorId], references: [id])
+  vendorId        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([nextDueDate])
+}
+
+model MaintenanceLog {
+  id              String   @id @default(cuid())
+  asset           Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId         String
+  logDate         DateTime
+  type            MaintenanceType
+  description     String?
+  cost            Float?
+  performedBy     User @relation(fields: [performedById], references: [id])
+  performedById   String
+  nextDueDate     DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([assetId])
+  @@index([logDate])
+}
+
+// ===== Notifications =====
+
+model Notification {
+  id                  String   @id @default(cuid())
+  user                User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String
+  type                NotificationType
+  title               String
+  message             String
+  relatedAsset        Asset? @relation("relatedAsset", fields: [relatedAssetId], references: [id])
+  relatedAssetId      String?
+  relatedTransfer     Transfer? @relation("relatedTransfer", fields: [relatedTransferId], references: [id])
+  relatedTransferId   String?
+  isRead              Boolean @default(false)
+  createdAt           DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// ===== Audit Logs =====
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  entityType  String   // "Asset", "Transfer", "User", "Master", etc.
+  entityId    String
+  action      String   // "CREATE", "UPDATE", "DELETE"
+  user        User @relation(fields: [userId], references: [id])
+  userId      String
+  changes     String?  // JSON stringified
+  timestamp   DateTime @default(now())
+
+  @@index([entityType])
+  @@index([entityId])
+  @@index([userId])
+  @@index([timestamp])
+}
+
+// ===== Disposal =====
+
+model Disposal {
+  id                String   @id @default(cuid())
+  disposalId        String   @unique      // DSP-2024-00001
+  assetId           String?
+  disposalType      DisposalType
+  reason            String?
+  disposalValue     Float?
+  disposalDate      DateTime
+  status            TransferStatus @default(PENDING_APPROVAL)
+  approvals         DisposalApproval[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([disposalId])
+  @@index([status])
+}
+
+model DisposalApproval {
+  id                  String   @id @default(cuid())
+  disposal            Disposal @relation(fields: [disposalId], references: [id], onDelete: Cascade)
+  disposalId          String
+  level               Int
+  approverId          String
+  isApproved          Boolean?
+  approvedAt          DateTime?
+  rejectionReason     String?
+  createdAt           DateTime @default(now())
+
+  @@index([disposalId])
+}
